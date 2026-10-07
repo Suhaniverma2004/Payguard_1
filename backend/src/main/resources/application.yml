@@ -36,12 +36,14 @@ server:
 
 security:
   jwt:
-    secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value-please}
+    secret: ${JWT_SECRET}
     expiration-ms: ${JWT_EXPIRATION_MS:3600000}
 
 payguard:
   outbox:
     poll-ms: ${OUTBOX_POLL_MS:1000}
+  security:
+    allowed-origins: ${PAYGUARD_ALLOWED_ORIGINS:http://localhost:5173}
 
 management:
   endpoints:

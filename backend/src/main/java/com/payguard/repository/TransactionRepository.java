@@ -19,6 +19,11 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
 
+    Optional<Transaction> findByIdempotencyKeyAndUserId(
+            String idempotencyKey,
+            String userId
+    );
+
     List<Transaction> findTop50ByOrderByCreatedAtDesc();
 
     List<Transaction> findTop50ByUserIdOrderByCreatedAtDesc(String userId);

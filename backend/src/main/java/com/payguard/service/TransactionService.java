@@ -52,7 +52,10 @@ public class TransactionService {
         String normalizedKey = idempotencyKey.trim();
 
         Optional<Transaction> existing =
-                repo.findByIdempotencyKey(normalizedKey);
+                repo.findByIdempotencyKeyAndUserId(
+                        normalizedKey,
+                        request.userId()
+                );
 
         if (existing.isPresent()) {
             return toResponse(
@@ -123,14 +126,19 @@ public class TransactionService {
                 );
             });
         } catch (DataIntegrityViolationException exception) {
-            return repo.findByIdempotencyKey(normalizedKey)
+            return repo.findByIdempotencyKeyAndUserId(
+                            normalizedKey,
+                            request.userId()
+                    )
                     .map(transaction ->
                             toResponse(
                                     transaction,
                                     "Idempotent replay: existing transaction returned"
                             )
                     )
-                    .orElseThrow(() -> exception);
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Idempotency-Key is already associated with another user"
+                    ));
         }
     }
 

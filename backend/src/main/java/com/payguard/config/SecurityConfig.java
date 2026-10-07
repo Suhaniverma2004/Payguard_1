@@ -16,7 +16,7 @@ public class SecurityConfig {
     @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwt) throws Exception {
         return http.csrf(csrf->csrf.disable())
                 .sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(a->a.requestMatchers("/api/v1/auth/**","/api/v1/transactions/health","/actuator/health","/error").permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(a->a.requestMatchers("/api/v1/auth/**","/api/v1/transactions/health","/actuator/health/**","/error").permitAll().anyRequest().authenticated())
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class).build();
     }
 }

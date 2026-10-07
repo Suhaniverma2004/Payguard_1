@@ -4,6 +4,8 @@ import com.payguard.event.TransactionEvent;
 import com.payguard.model.RiskAssessment;
 import com.payguard.repository.RiskAssessmentRepository;
 import com.payguard.repository.TransactionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,8 @@ import java.util.Map;
 
 @Service
 public class FraudRiskService {
+
+    private static final Logger log = LoggerFactory.getLogger(FraudRiskService.class);
 
     private final StringRedisTemplate redis;
     private final RiskAssessmentRepository risks;
@@ -49,8 +53,11 @@ public class FraudRiskService {
     public void assess(TransactionEvent tx) {
 
         if (risks.findByTransactionId(tx.transactionId()).isPresent()) {
+            log.info("fraud.duplicate_ignored transactionId={}", tx.transactionId());
             return;
         }
+
+        log.info("fraud.assessment_started transactionId={}", tx.transactionId());
 
         int ruleScore = 0;
         List<String> reasons = new ArrayList<>();
@@ -111,8 +118,13 @@ public class FraudRiskService {
             if (result != null) {
                 anomaly = result.anomalyScore();
             }
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
             reasons.add("ML service unavailable; rules-only assessment");
+            log.warn(
+                    "fraud.ml_fallback transactionId={} reason={}",
+                    tx.transactionId(),
+                    exception.getClass().getSimpleName()
+            );
         }
 
         if (anomaly >= 0.75) {
@@ -161,9 +173,22 @@ public class FraudRiskService {
             redis.opsForHash().put(hash, "riskLevel", level);
             redis.opsForHash().put(hash, "decision", decision);
             redis.opsForHash().put(hash, "anomalyScore", String.valueOf(anomaly));
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
             // Redis is a cache; PostgreSQL remains the source of truth.
+            log.warn(
+                    "fraud.redis_cache_failed transactionId={} reason={}",
+                    tx.transactionId(),
+                    exception.getClass().getSimpleName()
+            );
         }
+
+        log.info(
+                "fraud.assessment_completed transactionId={} riskScore={} riskLevel={} decision={}",
+                tx.transactionId(),
+                combined,
+                level,
+                decision
+        );
     }
 
     public record MLResponse(double anomalyScore, String model) {

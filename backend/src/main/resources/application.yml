@@ -42,3 +42,30 @@ security:
 payguard:
   outbox:
     poll-ms: ${OUTBOX_POLL_MS:1000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+info:
+  app:
+    name: PAYGUARD API
+    description: Real-time payment fraud detection and risk engine
+    version: 0.0.1
+    environment: ${APP_ENV:development}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId:-}] [%thread] %logger{36} - %msg%n"

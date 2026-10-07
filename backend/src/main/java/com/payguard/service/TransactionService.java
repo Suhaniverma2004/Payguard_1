@@ -9,6 +9,8 @@ import com.payguard.model.Transaction;
 import com.payguard.outbox.OutboxEvent;
 import com.payguard.outbox.OutboxEventRepository;
 import com.payguard.repository.TransactionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -21,6 +23,8 @@ import java.util.UUID;
 
 @Service
 public class TransactionService {
+
+    private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
 
     public static final String TOPIC = "transactions";
 
@@ -58,6 +62,7 @@ public class TransactionService {
                 );
 
         if (existing.isPresent()) {
+            log.info("transaction.idempotent_replay transactionId={}", existing.get().getTransactionId());
             return toResponse(
                     existing.get(),
                     "Idempotent replay: existing transaction returned"
@@ -118,6 +123,8 @@ public class TransactionService {
                                 Instant.now()
                         )
                 );
+
+                log.info("transaction.accepted transactionId={} event=TRANSACTION_CREATED", transactionId);
 
                 return new TransactionResponse(
                         transactionId,

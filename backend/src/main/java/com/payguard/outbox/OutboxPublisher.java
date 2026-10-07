@@ -2,6 +2,8 @@ package com.payguard.outbox;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.payguard.event.TransactionEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -13,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class OutboxPublisher {
+
+    private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
 
     private static final String TOPIC = "transactions";
 
@@ -50,6 +54,19 @@ public class OutboxPublisher {
                                 if (error == null) {
                                     event.setPublishedAt(Instant.now());
                                     repository.save(event);
+                                    log.info(
+                                            "outbox.published eventId={} aggregateId={} topic={}",
+                                            event.getId(),
+                                            event.getAggregateId(),
+                                            TOPIC
+                                    );
+                                } else {
+                                    log.warn(
+                                            "outbox.publish_failed eventId={} aggregateId={} reason={}",
+                                            event.getId(),
+                                            event.getAggregateId(),
+                                            error.getClass().getSimpleName()
+                                    );
                                 }
                             } finally {
                                 inFlight.remove(event.getId());
@@ -57,6 +74,12 @@ public class OutboxPublisher {
                         });
             } catch (Exception exception) {
                 inFlight.remove(event.getId());
+                log.error(
+                        "outbox.serialization_failed eventId={} aggregateId={} reason={}",
+                        event.getId(),
+                        event.getAggregateId(),
+                        exception.getClass().getSimpleName()
+                );
             }
         }
     }

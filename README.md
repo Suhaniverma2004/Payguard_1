@@ -2,7 +2,7 @@
 
 **Real-time payment fraud detection and risk engine** built as an event-driven software system.
 
-PAYGUARD accepts payment transactions through a secured Spring Boot API, publishes them to Kafka, evaluates deterministic fraud rules plus a Python anomaly model, persists the resulting decision in PostgreSQL, and caches hot risk data in Redis. A React command center provides authenticated monitoring and transaction simulation.
+PAYGUARD accepts payment transactions through a secured Spring Boot API, persists them through a transactional outbox, publishes events to Kafka, evaluates deterministic fraud rules plus a Python anomaly model, persists the resulting decision in PostgreSQL, and caches hot risk data in Redis. A React command center provides authenticated monitoring and transaction simulation.
 
 ## Architecture
 
@@ -12,56 +12,70 @@ React Dashboard
       | JWT-secured REST
       v
 Spring Boot API ---- PostgreSQL
+      |                 |
+      |                 +---- Transaction + Risk Audit
       |
-      | transaction event
-      v
-   Apache Kafka
-      |
-      v
-Fraud Risk Engine
-  |           |
-  |           +---- FastAPI / Isolation Forest
-  |
-  +---- rule scoring + velocity signals
-      |
-      +---- PostgreSQL risk assessment
-      +---- Redis risk cache
+      +---- Transactional Outbox
+                    |
+                    v
+                Apache Kafka
+                    |
+                    v
+              Fraud Risk Engine
+                |          |
+                |          +---- FastAPI / Isolation Forest
+                |
+                +---- Rule scoring + velocity signals
+                |
+                +---- PostgreSQL risk assessment
+                +---- Redis risk cache
 
-Kafka failures -> transactions.DLT
+Kafka processing failures -> retry / dead-letter handling
 ```
 
 ## Engineering features
 
 - JWT authentication with BCrypt password hashing.
 - Role-aware security boundary with an ADMIN-only metrics endpoint.
+- User-isolated transaction and risk access.
 - Idempotent transaction ingestion through the `Idempotency-Key` header.
-- Kafka event-driven risk processing with typed JSON serialization.
+- Transactional outbox for atomic transaction + event persistence.
+- Kafka event-driven risk processing with reliable producer/consumer settings.
 - Retry handling and a dead-letter topic for failed transaction events.
 - Hybrid risk score combining deterministic transaction rules and ML anomaly scoring.
 - Five-minute per-user transaction velocity signal.
 - PostgreSQL persistence for transactions and auditable risk assessments.
+- Versioned Flyway database migrations with Hibernate schema validation.
 - Redis cache for low-latency risk lookups.
-- React monitoring dashboard with live polling and transaction simulator.
-- GitHub Actions CI for Java tests, frontend build, and Python compilation.
-- Docker Compose orchestration for local development.
+- Correlation IDs, health probes, metrics and structured application logging.
+- React monitoring dashboard with live polling and transaction simulation.
+- Production-style Docker images with health checks and non-root backend/ML containers.
+- Nginx-served production React dashboard.
+- GitHub Actions CI for Java tests, frontend build, ML tests and Docker validation.
 
 ## Stack
 
-- **Backend:** Java 21, Spring Boot, Spring Security, REST APIs, JPA
+- **Backend:** Java 21, Spring Boot, Spring Security, REST APIs, JPA, Flyway
 - **Streaming:** Apache Kafka
 - **Data:** PostgreSQL, Redis
 - **ML:** Python, FastAPI, scikit-learn, Isolation Forest
-- **Frontend:** React, Vite, Recharts
+- **Frontend:** React, Vite, Recharts, Nginx
 - **DevOps:** Docker, Docker Compose, GitHub Actions
 
-## Local setup
+## Local deployment
 
-Prerequisites: Docker Desktop with Compose, Git, Java 21, Maven 3.9+, Node.js 20+.
+Prerequisites: Docker Desktop with Compose.
 
 From the repository root:
 
 ```bash
-docker compose up --build
+cp .env.example .env
+```
+
+Set a real local password and JWT secret in `.env`, then:
+
+```bash
+docker compose up --build -d
 ```
 
 Services:
@@ -71,16 +85,29 @@ Services:
 - ML service docs: `http://localhost:8000/docs`
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
-- Kafka: `localhost:9092` (broker is used by the containerized API)
+- Kafka: `localhost:9092`
+
+Check the stack:
+
+```bash
+docker compose ps
+docker compose logs -f backend
+```
+
+Stop it with:
+
+```bash
+docker compose down
+```
+
+The PostgreSQL data volume is preserved by default. Use `docker compose down -v` only when you intentionally want to remove the local database.
 
 ## API flow
 
 ### 1. Create an account
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"username":"demo","password":"demo123"}'
+curl -X POST http://localhost:8080/api/v1/auth/signup   -H "Content-Type: application/json"   -d '{"username":"demo","password":"demo123"}'
 ```
 
 Use the returned JWT as `Authorization: Bearer <token>` for protected endpoints.
@@ -90,11 +117,7 @@ Use the returned JWT as `Authorization: Bearer <token>` for protected endpoints.
 Every transaction request should carry a unique idempotency key.
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/transactions \
-  -H "Authorization: Bearer <token>" \
-  -H "Idempotency-Key: demo-txn-001" \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"USR-1001","amount":85000,"currency":"INR","merchantId":"MER-10","merchantCategory":"ELECTRONICS","location":"BENGALURU","deviceId":"DEV-99","transactionTime":"2026-10-07T16:00:00Z"}'
+curl -X POST http://localhost:8080/api/v1/transactions   -H "Authorization: Bearer <token>"   -H "Idempotency-Key: demo-txn-001"   -H "Content-Type: application/json"   -d '{"userId":"USR-1001","amount":85000,"currency":"INR","merchantId":"MER-10","merchantCategory":"ELECTRONICS","location":"BENGALURU","deviceId":"DEV-99","transactionTime":"2026-10-07T16:00:00Z"}'
 ```
 
 The API persists the transaction and emits a Kafka event. The risk engine consumes the event asynchronously.
@@ -102,8 +125,7 @@ The API persists the transaction and emits a Kafka event. The risk engine consum
 ### 3. Read risk assessments
 
 ```bash
-curl http://localhost:8080/api/v1/risk \
-  -H "Authorization: Bearer <token>"
+curl http://localhost:8080/api/v1/risk   -H "Authorization: Bearer <token>"
 ```
 
 A decision is one of `APPROVE`, `REVIEW`, or `BLOCK`.
@@ -121,9 +143,15 @@ The current research/demo model intentionally uses transparent signals rather th
 
 Thresholds are configurable in code and are intended for experimentation, not real payment authorization.
 
+## Production-readiness scope
+
+PAYGUARD now has versioned persistence, application security, observability, health checks, reproducible container builds, a production-style frontend image, CI validation, and a documented local deployment path.
+
+The repository intentionally remains a **single-node demonstration/deployment architecture**. A real production rollout would additionally require infrastructure-level TLS, external secret management, managed PostgreSQL/Redis/Kafka or a multi-broker Kafka cluster, horizontal scaling, load balancing, backups, disaster recovery, and a properly trained/calibrated fraud model.
+
 ## Project status
 
-The repository is an actively developed engineering project. The core event pipeline, authentication, idempotency, hybrid risk scoring, persistence, caching, dashboard, retries/DLT, and CI workflow are implemented. Production cloud deployment, load testing, observability, and model calibration are still future hardening stages.
+The core event-driven payment risk pipeline is implemented and CI-validated. The ML service remains a research/demo anomaly model trained on synthetic data; it should not be represented as a production fraud model.
 
 ## Roadmap
 
@@ -136,12 +164,15 @@ The repository is an actively developed engineering project. The core event pipe
 - [x] PostgreSQL risk-assessment audit trail
 - [x] Redis risk-result cache
 - [x] JWT authentication and role-aware authorization
-- [x] Idempotency handling
-- [x] Kafka retry + dead-letter topic
+- [x] User isolation and idempotency hardening
+- [x] Transactional outbox
+- [x] Kafka retry + dead-letter handling
 - [x] React monitoring dashboard and simulator
-- [x] GitHub Actions CI
-- [ ] Integration tests with Testcontainers
-- [ ] Structured observability / metrics / tracing
+- [x] Versioned Flyway database migrations
+- [x] Observability and health probes
+- [x] Dockerized local deployment
+- [x] Production-style frontend container
+- [x] GitHub Actions CI/CD validation
+- [ ] Multi-node cloud infrastructure
 - [ ] Load testing and performance benchmarks
-- [ ] Production cloud deployment
 - [ ] Calibrated fraud model trained on a real or responsibly sourced dataset

@@ -25,7 +25,7 @@ services:
       KAFKA_CFG_PROCESS_ROLES: controller,broker
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -56,6 +56,10 @@ services:
       DB_USER: payguard
       DB_PASSWORD: payguard
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ML_SERVICE_URL: http://ml-service:8000
+      JWT_SECRET: change-this-development-secret-to-a-long-random-value-please
     ports: ["8080:8080"]
 
 volumes:

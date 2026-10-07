@@ -11,6 +11,10 @@ spring:
     open-in-view: false
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: payguard-risk-engine
+      auto-offset-reset: earliest
+      enable-auto-commit: true
     producer:
       properties:
         spring.json.add.type.headers: false
@@ -20,3 +24,7 @@ spring:
       port: ${REDIS_PORT:6379}
 server:
   port: 8080
+security:
+  jwt:
+    secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value-please}
+    expiration-ms: ${JWT_EXPIRATION_MS:3600000}

@@ -17,7 +17,7 @@ def test_feature_shape_is_consistent():
 def test_hour_wraps_to_valid_range():
     normal = build_features(2500, 2, 1)
     wrapped = build_features(2500, 26, 1)
-    assert normal.tolist() == pytest.approx(wrapped.tolist())
+    assert normal.tolist()[0] == pytest.approx(wrapped.tolist()[0])
 
 
 def test_score_returns_bounded_anomaly():

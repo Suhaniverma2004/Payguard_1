@@ -4,6 +4,7 @@ import com.payguard.dto.RiskAssessmentResponse;
 import com.payguard.model.RiskAssessment;
 import com.payguard.repository.RiskAssessmentRepository;
 import com.payguard.repository.TransactionRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +29,10 @@ public class RiskController {
     @GetMapping
     public List<RiskAssessmentResponse> latest(Authentication authentication) {
         return riskRepository
-                .findLatestForUser(authentication.getName())
+                .findLatestForUser(
+                        authentication.getName(),
+                        PageRequest.of(0, 50)
+                )
                 .stream()
                 .map(this::map)
                 .toList();

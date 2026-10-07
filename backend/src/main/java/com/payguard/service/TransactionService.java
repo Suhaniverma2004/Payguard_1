@@ -49,7 +49,10 @@ public class TransactionService {
             throw new IllegalArgumentException("Idempotency-Key header is required");
         }
 
-        Optional<Transaction> existing = repo.findByIdempotencyKey(idempotencyKey);
+        String normalizedKey = idempotencyKey.trim();
+
+        Optional<Transaction> existing =
+                repo.findByIdempotencyKey(normalizedKey);
 
         if (existing.isPresent()) {
             return toResponse(
@@ -68,7 +71,7 @@ public class TransactionService {
 
                 Transaction transaction = new Transaction();
                 transaction.setTransactionId(transactionId);
-                transaction.setIdempotencyKey(idempotencyKey);
+                transaction.setIdempotencyKey(normalizedKey);
                 transaction.setUserId(request.userId());
                 transaction.setAmount(request.amount());
                 transaction.setCurrency(request.currency().toUpperCase());
@@ -104,14 +107,14 @@ public class TransactionService {
                     );
                 }
 
-                OutboxEvent outboxEvent = new OutboxEvent(
-                        "TRANSACTION_CREATED",
-                        transactionId,
-                        payload,
-                        Instant.now()
+                outboxRepository.save(
+                        new OutboxEvent(
+                                "TRANSACTION_CREATED",
+                                transactionId,
+                                payload,
+                                Instant.now()
+                        )
                 );
-
-                outboxRepository.save(outboxEvent);
 
                 return new TransactionResponse(
                         transactionId,
@@ -120,7 +123,7 @@ public class TransactionService {
                 );
             });
         } catch (DataIntegrityViolationException exception) {
-            return repo.findByIdempotencyKey(idempotencyKey)
+            return repo.findByIdempotencyKey(normalizedKey)
                     .map(transaction ->
                             toResponse(
                                     transaction,
@@ -131,12 +134,15 @@ public class TransactionService {
         }
     }
 
-    public List<Transaction> latest() {
-        return repo.findTop50ByOrderByCreatedAtDesc();
+    public List<Transaction> latestForUser(String userId) {
+        return repo.findTop50ByUserIdOrderByCreatedAtDesc(userId);
     }
 
-    public Optional<Transaction> get(String id) {
-        return repo.findByTransactionId(id);
+    public Optional<Transaction> getForUser(
+            String transactionId,
+            String userId
+    ) {
+        return repo.findByTransactionIdAndUserId(transactionId, userId);
     }
 
     public long velocity(String userId, Instant now) {

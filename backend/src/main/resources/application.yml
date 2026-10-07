@@ -1,30 +1,44 @@
 spring:
   application:
     name: payguard-api
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payguard}
     username: ${DB_USER:payguard}
     password: ${DB_PASSWORD:payguard}
+
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
     consumer:
       group-id: payguard-risk-engine
       auto-offset-reset: earliest
-      enable-auto-commit: true
+      enable-auto-commit: false
+
     producer:
       properties:
         spring.json.add.type.headers: false
+        acks: all
+        enable.idempotence: true
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+
 server:
   port: 8080
+
 security:
   jwt:
     secret: ${JWT_SECRET:change-this-development-secret-to-a-long-random-value-please}
     expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+
+payguard:
+  outbox:
+    poll-ms: ${OUTBOX_POLL_MS:1000}

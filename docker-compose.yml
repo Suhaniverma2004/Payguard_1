@@ -2,24 +2,37 @@ services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: payguard
-      POSTGRES_USER: payguard
-      POSTGRES_PASSWORD: payguard
-    ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+      POSTGRES_DB: ${POSTGRES_DB:-payguard}
+      POSTGRES_USER: ${POSTGRES_USER:-payguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-payguard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U payguard -d payguard"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 5s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
 
   kafka:
     image: bitnami/kafka:4.0
-    ports: ["9092:9092"]
+    ports:
+      - "9092:9092"
     environment:
       KAFKA_CFG_NODE_ID: 1
       KAFKA_CFG_PROCESS_ROLES: controller,broker
@@ -29,10 +42,58 @@ services:
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
 
   ml-service:
     build: ./ml-service
-    ports: ["8000:8000"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-payguard}
+      DB_USER: ${POSTGRES_USER:-payguard}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-payguard}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ML_SERVICE_URL: http://ml-service:8000
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env before starting PAYGUARD}
+      APP_ENV: ${APP_ENV:-docker}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
 
   frontend:
     image: node:22-alpine
@@ -40,27 +101,12 @@ services:
     volumes:
       - ./frontend:/app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    ports: ["5173:5173"]
-    depends_on: [backend]
-
-  backend:
-    build: ./backend
+    ports:
+      - "5173:5173"
     depends_on:
-      postgres: {condition: service_healthy}
-      kafka: {condition: service_started}
-      redis: {condition: service_started}
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: payguard
-      DB_USER: payguard
-      DB_PASSWORD: payguard
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      ML_SERVICE_URL: http://ml-service:8000
-      JWT_SECRET: change-this-development-secret-to-a-long-random-value-please
-    ports: ["8080:8080"]
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:
